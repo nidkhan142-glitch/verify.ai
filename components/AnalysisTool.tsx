@@ -246,17 +246,31 @@ export const AnalysisTool = forwardRef<any, AnalysisToolProps>(({
     setFeedbackSent(false);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: `Perform an advanced forensic authorship audit. 
-        CONTEXT: ${selectedContext} environment.
-        INPUT TEXT: "${text}"`,
-        config: {
-          systemInstruction: `You are Verify AI’s Chief Forensic Investigator.
-          CRITICAL: heatmap_annotations MUST correlate with score.
-          If AI generated, highlight phrases in RED (AI_PATTERN). 
-          If human, use BLUE (HUMAN_PATTERN).
+  // 1. Initialize the AI with your Vercel Environment Variable
+  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+  
+  // 2. Set the model to Gemini 2.5 Flash as requested
+  const model = genAI.getGenerativeModel({ 
+    model: "gemini-2.5-flash",
+    // Adding the system instruction here for better forensic accuracy
+    systemInstruction: "You are Verify AI’s Chief Forensic Investigator. CRITICAL: heatmap_annotations MUST correlate with score. If AI generated, highlight phrases in RED (AI_PATTERN). If human, use BLUE (HUMAN_PATTERN)."
+  });
+
+  // 3. Run the Audit
+  const result = await model.generateContent({
+    contents: [{
+      role: 'user',
+      parts: [{
+        text: `Perform an advanced forensic authorship audit. 
+               CONTEXT: ${selectedContext} environment.
+               INPUT TEXT: "${text}"`
+      }]
+    }]
+  });
+
+  const response = await result.response;
+  const analysisOutput = response.text();
+  // ... rest of your UI logic
           
           JSON SCHEMA:
           {
