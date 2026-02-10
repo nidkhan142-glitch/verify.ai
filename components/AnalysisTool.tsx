@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, forwardRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle, useMemo } from 'react';
 import Groq from "groq-sdk";
 import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
@@ -244,10 +244,10 @@ export const AnalysisTool = forwardRef<any, AnalysisToolProps>(({
     setFeedbackSent(false);
 
     try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash-exp",
-        systemInstruction: "You are Verify AI's Chief Forensic Investigator. Your analysis must be clinical and objective. Return ONLY valid JSON with no markdown formatting."
+      // Initialize Groq client with browser support
+      const groq = new Groq({
+        apiKey: import.meta.env.VITE_GROQ_API_KEY,
+        dangerouslyAllowBrowser: true
       });
 
       const prompt = `Perform a comprehensive forensic authorship audit on the following text in the ${selectedContext} context.
@@ -316,9 +316,24 @@ Return a JSON object with this EXACT structure (no markdown, no backticks, pure 
 
 CRITICAL: Return ONLY the JSON object. No explanatory text before or after.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const rawText = response.text();
+      // Call Groq API with llama-3.3-70b-versatile model
+      const completion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: "You are Verify AI's Chief Forensic Investigator. Your analysis must be clinical and objective. Return ONLY valid JSON with no markdown formatting."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.7,
+        max_tokens: 4096
+      });
+
+      const rawText = completion.choices[0]?.message?.content || '';
       
       // Clean and parse the response
       const cleanedText = cleanJson(rawText);
@@ -326,7 +341,7 @@ CRITICAL: Return ONLY the JSON object. No explanatory text before or after.`;
       
       setReport(data);
 
-      // Save to database
+      // Save to database and deduct credits
       if (user) {
         const { data: analysisData } = await supabase
           .from('analyses')
@@ -353,11 +368,11 @@ CRITICAL: Return ONLY the JSON object. No explanatory text before or after.`;
       }
     } catch (err: any) {
       console.error("Analysis Error:", err);
-      setError('Analysis failed. Check your API key or model limits.');
+      setError('Analysis failed. Please check your API key or try again.');
     } finally {
       setIsAnalyzing(false);
     }
-  }; // ← THIS WAS MISSING!
+  };
 
   const renderHeatmap = () => {
     if (!report || !text) return null;
