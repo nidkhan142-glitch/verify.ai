@@ -1,5 +1,4 @@
-import React, { useState, useImperativeHandle, forwardRef, useRef } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";                                   
 import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -480,15 +479,28 @@ CRITICAL: Return ONLY the JSON object. No explanatory text before or after.`;
             </div>
           </div>
           <div className="flex flex-col items-center gap-4 pb-24">
-            <button onClick={handleAnalyze} disabled={isAnalyzing || !text.trim()} className={`px-24 py-6 rounded-2xl font-black text-2xl transition-all shadow-2xl ${isAnalyzing || !text.trim() ? 'bg-slate-800 text-slate-600' : 'bg-emerald-500 hover:bg-emerald-400 text-[#020617]'}`}>
+            <button 
+              onClick={handleAnalyze} 
+              disabled={isAnalyzing || !text.trim()} 
+              className={`px-24 py-6 rounded-2xl font-black text-2xl transition-all shadow-2xl ${
+                isAnalyzing || !text.trim() 
+                ? 'bg-slate-800 text-slate-600 cursor-not-allowed' 
+                : 'bg-emerald-500 hover:bg-emerald-400 text-[#020617] active:scale-95'
+              }`}
+            >
               {isAnalyzing ? 'Scanning Ecosystem...' : 'Run Forensic Audit'}
             </button>
-            <p className="text-xs text-slate-600 font-bold uppercase tracking-[0.3em] mono">Deducts 2 Credits</p>
+            <p className="text-xs text-slate-600 font-bold uppercase tracking-[0.3em] mono">
+              Deducts 2 Credits
+            </p>
           </div>
-          {error && <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center font-bold">⚠️ {error}</div>}
+          {error && (
+            <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center font-bold animate-pulse">
+              ⚠️ {error}
+            </div>
+          )}
         </div>
       )}
-
       {isAnalyzing && (
         <div className="fixed inset-0 z-[100] bg-[#020617]/98 backdrop-blur-2xl flex flex-col items-center justify-center space-y-12">
            <div className="relative w-32 h-32">
