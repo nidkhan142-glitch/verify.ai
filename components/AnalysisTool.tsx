@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, forwardRef } from 'react'; // ADDED THIS
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useMemo } from 'react';
 import Groq from "groq-sdk";
 import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
