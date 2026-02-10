@@ -1,9 +1,9 @@
-import Groq from "groq-sdk";                                   
+import React, { useState, useEffect, useCallback, forwardRef } from 'react'; // ADDED THIS
+import Groq from "groq-sdk";
 import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as mammoth from 'mammoth';
-
 // PDF.js worker setup
 import * as pdfjsLib from 'pdfjs-dist';
 
