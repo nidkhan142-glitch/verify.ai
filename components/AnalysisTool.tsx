@@ -1,5 +1,5 @@
 import React, { useState, useImperativeHandle, forwardRef, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -74,7 +74,6 @@ interface AnalysisToolProps {
 
 const PHOTOSYNTHESIS_ESSAY = `Photosynthesis is a sophisticated biological process that serves as the primary energy-conversion mechanism for life on Earth. Through the absorption of electromagnetic radiation, specifically within the visible spectrum, photoautotrophs such as plants and cyanobacteria synthesize organic compounds from inorganic precursors. The process occurs within specialized organelles known as chloroplasts, where chlorophyll pigments capture photons to initiate the light-dependent reactions. These reactions facilitate the photolysis of water, releasing molecular oxygen as a byproduct while generating ATP and NADPH. Subsequently, the Calvin Cycle utilizes these energy carriers to fix atmospheric carbon dioxide into triose phosphates, which are eventually converted into glucose and other vital carbohydrates. This intricate cycle not only sustains the growth and development of the organism but also maintains the global atmospheric balance by sequestering carbon and producing the oxygen necessary for aerobic respiration across the biosphere.`;
 
-// Improved sample logic: manually define annotations to ensure correct indices
 const generateSampleAnnotations = (): HeatmapAnnotation[] => {
   const sentences = PHOTOSYNTHESIS_ESSAY.split(/(?<=\.)\s+/);
   let currentIndex = 0;
@@ -245,33 +244,90 @@ export const AnalysisTool = forwardRef<any, AnalysisToolProps>(({
     setError(null);
     setFeedbackSent(false);
 
-try {
+    try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-        systemInstruction: "You are Verify AI’s Chief Forensic Investigator. Your analysis must be clinical and objective."
+        model: "gemini-2.0-flash-exp",
+        systemInstruction: "You are Verify AI's Chief Forensic Investigator. Your analysis must be clinical and objective. Return ONLY valid JSON with no markdown formatting."
       });
 
-      const result = await model.generateContent(`
-        Perform forensic audit on: "${text}" in ${selectedContext} context.
-        Return JSON matching this structure:
-        {
-          "score": 0,
-          "confidence": "High",
-          "verdict": "String",
-          "plain_language_meaning": "String",
-          "stats": { "burstiness": "String", "lexical_density": "String" },
-          "heatmap_annotations": [{ "text": "String", "type": "AI_PATTERN" }]
-        }
-      `);
+      const prompt = `Perform a comprehensive forensic authorship audit on the following text in the ${selectedContext} context.
 
+TEXT TO ANALYZE:
+"${text}"
+
+Return a JSON object with this EXACT structure (no markdown, no backticks, pure JSON only):
+
+{
+  "score": <number 0-100>,
+  "confidence": "<Low|Medium|High>",
+  "verdict": "<Likely Human-Written|Likely AI-Generated|AI-Assisted (Hybrid)|Inconclusive (Insufficient Evidence)>",
+  "plain_language_meaning": "<string explaining what the score means>",
+  "pattern_insights": "<string describing the key patterns detected>",
+  "key_observations": ["<observation 1>", "<observation 2>", "<observation 3>"],
+  "stats": {
+    "sentence_variance": {
+      "result": "<string>",
+      "interpretation": "<string>"
+    },
+    "lexical_density": {
+      "result": "<string>",
+      "interpretation": "<string>"
+    },
+    "burstiness": {
+      "result": "<string>",
+      "interpretation": "<string>"
+    },
+    "insight": "<string>"
+  },
+  "evidence": {
+    "ai_patterns": ["<pattern 1>", "<pattern 2>"],
+    "human_signals": ["<signal 1>", "<signal 2>"],
+    "dominance_explanation": "<string>"
+  },
+  "forensic_deep_dive": {
+    "structural_monotony": {
+      "label": "<string>",
+      "description": "<string>"
+    },
+    "fact_verification": {
+      "status": "<string>",
+      "insight": "<string>"
+    },
+    "turing_friction": {
+      "connective_tissue_count": <number>,
+      "detected_tokens": ["<token 1>", "<token 2>"],
+      "explanation": "<string>"
+    }
+  },
+  "humanization_roadmap": ["<tip 1>", "<tip 2>", "<tip 3>"],
+  "verdict_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
+  "recommendations": ["<recommendation 1>", "<recommendation 2>"],
+  "heatmap_annotations": [
+    {
+      "start_index": <number>,
+      "end_index": <number>,
+      "label": "<AI_PATTERN|HUMAN_PATTERN>",
+      "color": "<red|blue>",
+      "tooltip_title": "<string>",
+      "tooltip_explanation": "<string>"
+    }
+  ]
+}
+
+CRITICAL: Return ONLY the JSON object. No explanatory text before or after.`;
+
+      const result = await model.generateContent(prompt);
       const response = await result.response;
       const rawText = response.text();
-      // This is the part that cleans and parses the data for the UI
-      const data = JSON.parse(rawText.replace(/```json|```/g, ""));
+      
+      // Clean and parse the response
+      const cleanedText = cleanJson(rawText);
+      const data: ForensicReportData = JSON.parse(cleanedText);
+      
       setReport(data);
 
-      // Now save to your database (Supabase)
+      // Save to database
       if (user) {
         const { data: analysisData } = await supabase
           .from('analyses')
@@ -282,20 +338,27 @@ try {
             score: data.score,
             verdict: data.verdict
           })
-          .select().single();
+          .select()
+          .single();
 
         if (analysisData) setCurrentAnalysisId(analysisData.id);
-        await supabase.from('user_credits').update({ credits: credits - 2 }).eq('user_id', user.id);
+        
+        await supabase
+          .from('user_credits')
+          .update({ credits: credits - 2 })
+          .eq('user_id', user.id);
+        
         onUpdateCredits();
       } else {
         onUpdateGuestCredits(guestCredits - 2);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Analysis Error:", err);
       setError('Analysis failed. Check your API key or model limits.');
     } finally {
       setIsAnalyzing(false);
     }
+  }; // ← THIS WAS MISSING!
 
   const renderHeatmap = () => {
     if (!report || !text) return null;
