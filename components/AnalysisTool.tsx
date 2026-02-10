@@ -245,106 +245,57 @@ export const AnalysisTool = forwardRef<any, AnalysisToolProps>(({
     setError(null);
     setFeedbackSent(false);
 
-    try {
-  // 1. Initialize the AI with your Vercel Environment Variable
-  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-  
-  // 2. Set the model to Gemini 2.5 Flash as requested
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
-    // Adding the system instruction here for better forensic accuracy
-    systemInstruction: "You are Verify AI’s Chief Forensic Investigator. CRITICAL: heatmap_annotations MUST correlate with score. If AI generated, highlight phrases in RED (AI_PATTERN). If human, use BLUE (HUMAN_PATTERN)."
-  });
-
-  // 3. Run the Audit
-  const result = await model.generateContent({
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: `Perform an advanced forensic authorship audit. 
-               CONTEXT: ${selectedContext} environment.
-               INPUT TEXT: "${text}"`
-      }]
-    }]
-  });
-
-  const response = await result.response;
-  const analysisOutput = response.text();
-  // ... rest of your UI logic
-          
-          JSON SCHEMA:
-          {
-            "score": number,
-            "confidence": "Low" | "Medium" | "High",
-            "verdict": "Likely Human-Written" | "Likely AI-Generated" | "AI-Assisted (Hybrid)",
-            "plain_language_meaning": "string",
-            "pattern_insights": "string",
-            "key_observations": ["string"],
-            "stats": {
-              "sentence_variance": { "result": "string", "interpretation": "string" },
-              "lexical_density": { "result": "string", "interpretation": "string" },
-              "burstiness": { "result": "string", "interpretation": "string" },
-              "insight": "string"
-            },
-            "forensic_deep_dive": {
-              "structural_monotony": { "label": "string", "description": "string" },
-              "fact_verification": { "status": "string", "insight": "string" },
-              "turing_friction": { "connective_tissue_count": number, "detected_tokens": ["string"], "explanation": "string" }
-            },
-            "humanization_roadmap": ["string"],
-            "heatmap_annotations": [
-              { "start_index": number, "end_index": number, "label": "string", "color": "red" | "blue", "tooltip_title": "string", "tooltip_explanation": "string" }
-            ],
-            "recommendations": ["string"]
-          }`,
-          responseMimeType: "application/json",
-        }
+try {
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+        systemInstruction: "You are Verify AI’s Chief Forensic Investigator. Your analysis must be clinical and objective."
       });
 
-      const cleanedText = cleanJson(response.text || '{}');
-      const data = JSON.parse(cleanedText) as ForensicReportData;
+      const result = await model.generateContent(`
+        Perform forensic audit on: "${text}" in ${selectedContext} context.
+        Return JSON matching this structure:
+        {
+          "score": 0,
+          "confidence": "High",
+          "verdict": "String",
+          "plain_language_meaning": "String",
+          "stats": { "burstiness": "String", "lexical_density": "String" },
+          "heatmap_annotations": [{ "text": "String", "type": "AI_PATTERN" }]
+        }
+      `);
+
+      const response = await result.response;
+      const rawText = response.text();
+      // This is the part that cleans and parses the data for the UI
+      const data = JSON.parse(rawText.replace(/```json|```/g, ""));
       setReport(data);
 
+      // Now save to your database (Supabase)
       if (user) {
-        const { data: analysisData, error: saveError } = await supabase
+        const { data: analysisData } = await supabase
           .from('analyses')
           .insert({
             user_id: user.id,
             input_text: text,
             report_data: data,
             score: data.score,
-            verdict: data.verdict,
-            context: selectedContext
+            verdict: data.verdict
           })
           .select().single();
-        if (!saveError) setCurrentAnalysisId(analysisData.id);
+
+        if (analysisData) setCurrentAnalysisId(analysisData.id);
         await supabase.from('user_credits').update({ credits: credits - 2 }).eq('user_id', user.id);
         onUpdateCredits();
       } else {
         onUpdateGuestCredits(guestCredits - 2);
       }
-    } catch (err: any) {
-      console.error(err);
-      setError('Analysis failed. The model might be busy.');
+    } catch (err) {
+      console.error("Analysis Error:", err);
+      setError('Analysis failed. Check your API key or model limits.');
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const submitFeedback = async () => {
-    if (rating === 0) return;
-    try {
-      await supabase.from('analysis_feedback').insert({
-        analysis_id: currentAnalysisId,
-        rating,
-        comment: feedback,
-        user_id: user?.id
-      });
-      setFeedbackSent(true);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const renderHeatmap = () => {
     if (!report || !text) return null;
